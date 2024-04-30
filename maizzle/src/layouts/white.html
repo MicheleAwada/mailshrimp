@@ -1,0 +1,51 @@
+<x-base>
+    <div class="bg-slate-50 sm:px-4 font-sans">
+        <table align="center">
+            <tr>
+            <td class="w-[552px] max-w-full">
+                <div class="my-12 sm:my-8 text-center">
+                </div>
+
+                <table class="w-full">
+                <tr>
+                    <td class="p-12 sm:px-6 text-base text-slate-700 bg-white rounded shadow-sm">
+                    <content />
+                    </td>
+                </tr>
+                <tr role="separator">
+                    <td class="leading-12">&zwj;</td>
+                </tr>
+                <tr>
+                    <td class="pb-4 text-center text-slate-600 text-xs px-6">
+                    <p class="m-0 mb-4">
+                        Email from <a class="text-blue-700 no-underline" href="https://micheleawada.com" target="_blank">Michele Awada</a>
+                    </p>
+
+                    <p class="m-0 italic">
+                        Check out my Social Media!
+                    </p>
+                    <div class="py-4">  
+                        <each loop='item, index in constsocial_media_info=[{iconname:"linkedin",alt:"LinkedIn",link:"https://www.linkedin.com/in/michele-awada/"},{iconname:"x",alt:"X/Twitter",link:"https://twitter.com/PeanutBuetter"},]'>
+                            <a href="{{ item.link }}" target="_blank" class="mx-2">
+                                <if condition="page.env === 'production'">
+                                    <img src="{% fullstatic 'mail/images/social-media-icons/{{ item.iconname }}.png' %}" alt="{{ item.alt }}" class="h-4" />
+                                </if>
+                                <else>
+                                    <img src="{{ page.baseDevFullStaticProdUrl }}{{ item.iconname }}.png" alt="{{ item.alt }}" class="h-4" />
+                                </else>
+                            </a>
+                        </each>
+                    </div>
+                    <if condition="page.newsletter">
+                        <div class="py-4">
+                            <x-unsub />
+                        </div>
+                    </if>
+                    </td>
+                </tr>
+                </table>
+            </td>
+            </tr>
+        </table>
+    </div>
+</x-base>
