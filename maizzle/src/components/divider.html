@@ -1,0 +1,14 @@
+<script props>
+  // https://maizzle.com/docs/components/divider
+  module.exports = {
+    spaceY: props['space-y'] || '8px', // top and bottom margin
+  }
+</script>
+
+<div
+  role="separator"
+  class="bg-slate-200 h-[1px]"
+  style="
+    {{ spaceY && `margin-top: ${spaceY}; margin-bottom: ${spaceY};` }}
+  "
+>&zwj;</div>
