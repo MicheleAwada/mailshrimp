@@ -24,10 +24,26 @@ class UserManager(BaseUserManager):
 
         return self.create_user(email, password, **extra_fields)
 
-class User(AbstractUser):
+class User(AbstractBaseUser):
+    email = models.EmailField(unique=True)
+    first_name = models.CharField(max_length=30, blank=True)
+    last_name = models.CharField(max_length=30, blank=True)
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    date_joined = models.DateTimeField(default=timezone.now)
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+
+    objects = UserManager()
+
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
 
 
     def __str__(self):
         return self.username
+    def get_full_name(self):
+        return f"{self.first_name} {self.last_name}"
+    def get_short_name(self):
+        return self.first_name
