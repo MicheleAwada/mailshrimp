@@ -50,4 +50,17 @@ class CustomMessageAuthTokenSerializer(AuthTokenSerializer):
 class ObtainAuthToken(ObtainAuthToken):
     serializer_class = CustomMessageAuthTokenSerializer
 
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data.get("user")
+        token = getTokenFromUser(user)
+        tokenData = { 'token': token }
+        fullData = tokenData.copy()
+        fullData.update(getUserDataFromUser(user))
+
+        return Response(fullData)
+
 loginView = ObtainAuthToken.as_view()
+
+
