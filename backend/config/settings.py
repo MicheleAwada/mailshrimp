@@ -21,6 +21,8 @@ INSTALLED_APPS = [
     
     "mail_accounts",
     "accounts",
+
+    'rest_framework.authtoken',
 ]
 
 MIDDLEWARE = [
