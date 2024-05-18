@@ -130,11 +130,17 @@ if WILLING_TO_ACCEPT_HTTPS and HTTP_PROTOCOL == 'https://' and DEBUG:
 ALLOWED_HOSTS = [
     BACKEND_NAME,
 ]
-if DEBUG and BACKEND_NAME == "127.0.0.1:8000":
-    ALLOWED_HOSTS += ["127.0.0.1", "localhost"]
-    INTERNAL_IPS = [
-        "127.0.0.1"
-    ]
+
+PURE_BACKEND_NAME = None
+if DEBUG:
+    if ":" in BACKEND_NAME:
+        PURE_BACKEND_NAME = BACKEND_NAME.split(":")[0]
+        ALLOWED_HOSTS += [PURE_BACKEND_NAME]
+        INTERNAL_IPS = [
+            PURE_BACKEND_NAME
+        ]
+    else:
+        raise ValueError("BACKEND_NAME and FRONTEND_NAME must contain a port number if your in debug")
 
 CSRF_TRUSTED_ORIGINS = [
     BACKEND_URL
