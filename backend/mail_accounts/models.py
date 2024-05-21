@@ -1,3 +1,40 @@
+# quota in kilobytes
+class Domain(models.Model):
+    name = models.CharField(unique=True)
+
+    dkim_selector = models.CharField()
+    dkim_key_size = models.IntegerField()
+    dkim = models.CharField() # dns record
+    dkim_public = models.CharField()
+    dkim_dns_zone_file = models.CharField()
+    dkim_private = models.CharField()
+
+    quota = PosIntegerOrInfinityField()
+    max_mailbox_quota = PosIntegerOrInfinityField()
+
+    max_mailboxes = PosIntegerOrInfinityField()
+    max_aliases = PosIntegerOrInfinityField()
+
+
+
+
+    def get_mailbox_quota_consumption_sum(self, exclude_mailbox=None):
+        sum = 0
+        for mailbox in self.mail_boxes.all():
+            if not isInfinity(mailbox):
+                # print(mailbox != exclude_mailbox)
+                if (exclude_mailbox is None or mailbox != exclude_mailbox):
+                    sum += mailbox.quota
+        return sum
+    def get_mailbox_quota_consumption_left(self, exclude_mailbox=None):
+        mailbox_quota_consumption_sum = self.get_mailbox_quota_consumption_sum(exclude_mailbox=exclude_mailbox)
+        return self.quota - mailbox_quota_consumption_sum
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Domain"
+        verbose_name_plural = "Domains"
+
+
 class MailBox(models.Model):
     fullname = models.CharField()
     username = models.CharField()
