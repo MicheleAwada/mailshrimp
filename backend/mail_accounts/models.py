@@ -1,3 +1,7 @@
+def isInfinity(float):
+    return float == math.inf
+
+
 # quota in kilobytes
 class Domain(models.Model):
     name = models.CharField(unique=True)
