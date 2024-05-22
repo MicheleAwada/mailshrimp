@@ -1,3 +1,21 @@
+class PosIntegerOrInfinityField(models.PositiveIntegerField):
+    def get_prep_value(self, value):
+        if value is None:
+            return value
+        if value==math.inf:
+            return 0
+        value = super().get_prep_value(value)
+        value+=1
+        return value
+    def from_db_value(self, value, *args, **kwargs):
+        if value is None:
+            return value
+        if value==0:
+            return math.inf
+        else:
+            return value-1
+
+
 def isInfinity(float):
     return float == math.inf
 
