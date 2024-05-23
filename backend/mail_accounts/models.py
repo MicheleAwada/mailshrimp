@@ -1,3 +1,8 @@
+from django.db import models
+import math
+from django.contrib.auth.hashers import make_password, check_password
+
+
 class PosIntegerOrInfinityField(models.PositiveIntegerField):
     def get_prep_value(self, value):
         if value is None:
