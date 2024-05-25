@@ -1,3 +1,14 @@
+class DomainForeignKeyField(serializers.RelatedField):
+    def to_representation(self, value):
+        return value.id
+
+    def to_internal_value(self, data):
+        try:
+            obj = models.Domain.objects.get(name=data)
+            return obj
+        except models.Domain.DoesNotExist:
+            raise serializers.ValidationError("Related object does not exist.")
+
 class MailBoxSerializer(serializers.ModelSerializer):
     domain = DomainForeignKeyField(queryset=models.Domain.objects.all())
     def validate(self, attrs):
