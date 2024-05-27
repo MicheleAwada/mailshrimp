@@ -1,3 +1,38 @@
+def generate_dkim_keypair(domain_name, dkim_selector, key_dir, key_size):
+    private_key_path = os.path.join(key_dir, f'{dkim_selector}.private')
+    public_key_path = os.path.join(key_dir, f'{dkim_selector}.public')
+
+    # Generate DKIM key pair using openssl
+    subprocess.run(['openssl', 'genrsa', '-out', private_key_path, key_size], check=True)
+    subprocess.run(['openssl', 'rsa', '-in', private_key_path, '-outform', 'PEM', '-pubout', '-out', public_key_path], check=True)
+
+    # Read the public key from file
+    with open(public_key_path, 'r') as f:
+        public_key = f.read().strip()
+        public_key_splitted_list = public_key.split("\n")
+        public_key_splitted_list = public_key_splitted_list[1:-1]
+        public_key = "".join(public_key_splitted_list)
+    with open(private_key_path, 'r') as f:
+        private_key = f.read().strip()
+        formatted_private_splitted_list = private_key.split("\n")
+        formatted_private_splitted_list = formatted_private_splitted_list[1:-1]
+        formatted_private = "".join(formatted_private_splitted_list)
+    dkim_record = f"v=DKIM1;k=rsa;t=s;s=email;p={public_key}"
+    public_dkim_file_format = f'{dkim_selector}._domainkey.{domain_name} IN TXT "{dkim_record}"'
+    with open(public_key_path, 'w') as f:
+        f.write(public_dkim_file_format)
+    return { "dkim_dns_zone_file": public_dkim_file_format, "dkim": dkim_record, "dkim_public": public_key, "dkim_private": private_key, }
+def get_and_create_default_dkim_key_path(domain_name):
+    return fully_create_directory(os.path.join(DEFAULT_DKIM_PATH, domain_name))
+def set_dkim(domain_name, dkim_selector, dkim_key_size):
+    key_dir = get_and_create_default_dkim_key_path(domain_name)
+    keys = generate_dkim_keypair(domain_name=domain_name, dkim_selector=dkim_selector, key_dir=key_dir,
+                                                         key_size=str(dkim_key_size))
+    return keys
+
+
+
+
 class DomainSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         quota = attrs.get("quota")
