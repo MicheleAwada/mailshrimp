@@ -1,3 +1,8 @@
+def valid_domain_name(name):
+    domain_regrex = r'^[a-zA-Z0-9.-]+$'
+    return re.match(domain_regrex, name) is not None
+
+
 def generate_dkim_keypair(domain_name, dkim_selector, key_dir, key_size):
     private_key_path = os.path.join(key_dir, f'{dkim_selector}.private')
     public_key_path = os.path.join(key_dir, f'{dkim_selector}.public')
