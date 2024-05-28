@@ -1,3 +1,12 @@
+def fully_create_directory(directory_path):
+    directory_path = str(Path(directory_path))
+    directory_parent = Path(directory_path).parent
+    if not os.path.exists(directory_parent):
+        fully_create_directory(directory_parent)
+    if not os.path.exists(directory_path):
+        os.mkdir(directory_path)
+    return directory_path
+
 def valid_domain_name(name):
     domain_regrex = r'^[a-zA-Z0-9.-]+$'
     return re.match(domain_regrex, name) is not None
