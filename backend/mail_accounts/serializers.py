@@ -1,3 +1,18 @@
+
+class IntegerOrInfinityField(serializers.IntegerField):
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        if value == -1:
+            return math.inf
+        if value < 0:
+            raise serializers.ValidationError("Number Must Be Positive")
+        return value
+    def to_representation(self, value):
+        if value == math.inf:
+            return -1
+        return super().to_representation(value)
+
+
 def fully_create_directory(directory_path):
     directory_path = str(Path(directory_path))
     directory_parent = Path(directory_path).parent
