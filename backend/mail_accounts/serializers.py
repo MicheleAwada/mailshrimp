@@ -1,4 +1,15 @@
 
+DEFAULT_DKIM_SELECTOR = settings.DEFAULT_DKIM_SELECTOR
+DEFAULT_DKIM_PATH = settings.DEFAULT_DKIM_PATH
+SHOW_PRIVATE_DKIM = settings.SHOW_PRIVATE_DKIM
+
+full_dkim_read_only_fields = ["dkim", "dkim_public", "dkim_dns_zone_file", ]
+if SHOW_PRIVATE_DKIM:
+    full_dkim_read_only_fields.append("dkim_private")
+full_dkim_fields = ["dkim_selector", "dkim_key_size"] + full_dkim_read_only_fields
+
+
+
 class IntegerOrInfinityField(serializers.IntegerField):
     def to_internal_value(self, data):
         value = super().to_internal_value(data)
