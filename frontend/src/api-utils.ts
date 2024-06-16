@@ -1,28 +1,24 @@
-import { sleep } from "./utils";
+import { sleep, isServerOfflineFromStatusCode } from "./utils";
 
 type allStringArrayAndNotEmpty = string[] & { length: number } & { 0: string }
-type fieldAllStringArrayAndNotEmpty = { [key: string]: allStringArrayAndNotEmpty | string | undefined }
+type fieldAllStringArrayAndNotEmpty = { [key: string]: string[] | string }
 
-function findError(error: { message?: string, response?: { data?: fieldAllStringArrayAndNotEmpty } }) {
+function findError(error: { message: string, response?: { status: number, statusText: string, data?: fieldAllStringArrayAndNotEmpty } }) {
 	let fields: fieldAllStringArrayAndNotEmpty = {};
 	let errorMessage: undefined | string = undefined;
 	let alwaysErrorMessage = "Oops, a unknown error occured";
-	let type = "internal"
 	if (error.message) {
 		alwaysErrorMessage = error.message;
 		errorMessage = error.message;
 	}
 	if (error.response && error.response.data) {
-		type = "external"
-
-        if (error.response.data.detail && typeof error.response.data.detail === "string") {
-			alwaysErrorMessage = error.response.data.detail;
-            errorMessage = alwaysErrorMessage
-		} else if (error.response.data.status && typeof error.response.data.status === "string") {
-			alwaysErrorMessage = error.response.data.status;
-            errorMessage = alwaysErrorMessage
-		} else {
-			fields = error.response.data;
+        const potientiallyFields = error.response.data
+        const fieldsErrorExists = Object.keys(potientiallyFields).some((potientialField) => {
+            const value = potientiallyFields[potientialField]
+            return Array.isArray(value)
+        })
+        if (fieldsErrorExists) {
+            fields = potientiallyFields;
 			alwaysErrorMessage = "Oops, check to see a field has a error to fix it";
             errorMessage = undefined
             if (fields.non_field_errors && Array.isArray(error.response.data.non_field_errors)) {
@@ -31,13 +27,29 @@ function findError(error: { message?: string, response?: { data?: fieldAllString
                     errorMessage = formattedNonFieldError
                     alwaysErrorMessage = errorMessage
                 }
+            } else if (Object.keys(fields).length === 0) {
+                const statusText = error.response?.statusText || ""
+                const axiosMessage = error.message || ""
+                errorMessage = statusText || axiosMessage || "Oops, their was an error."
+                alwaysErrorMessage = errorMessage
             }
+        } else if (error.response.data.detail && typeof error.response.data.detail === "string") {
+			alwaysErrorMessage = error.response.data.detail;
+            errorMessage = alwaysErrorMessage
+		} else if (error.response.data.status && typeof error.response.data.status === "string") {
+			alwaysErrorMessage = error.response.data.status;
+            errorMessage = alwaysErrorMessage
 		}
 	}
-	return { errorMessage: errorMessage, alwaysErrorMessage: alwaysErrorMessage, fields: fields, errorType: type };
+	return { errorMessage: errorMessage, alwaysErrorMessage: alwaysErrorMessage, fields: fields, };
 }
 
-type dataType = {[key: string]: any}
+function getExtraInfoFromResponse(response: { [key: string]: any }) {
+    return { serverOnline: !isServerOfflineFromStatusCode(response.status), statusCode: response.status, statusText: response.statusText };
+}
+
+
+type dataType = {[key: string]: any} | null | undefined
 
 interface fetchAPIInterface {
 	link?: string
@@ -46,41 +58,46 @@ interface fetchAPIInterface {
 	sleepFor?: number
 	data?: dataType
 	method?: "post" | "get" | "put" | "patch" | "delete"
+    validate?: (d: any, c: any) => {}
+    validateContext?: any
+    params?: { [key: string]: string }
 }
 
-async function fetchAPI(api: any, { data, link, link_function, link_data, sleepFor=0, method="post"}: fetchAPIInterface = {}) {
+async function fetchAPI(api: any, { data={}, params={}, link, link_function, link_data, validate=d=>d, validateContext={}, sleepFor=0, method="post"}: fetchAPIInterface = {}) {
     if (sleepFor) {
         await sleep(sleepFor)
     }
     if (link_function && link_data && !link) {
         link = link_function(link_data)
     }
+    if (params) {
+        const params_string = new URLSearchParams(params).toString()
+        if (params_string.length > 0) {
+            link = `${link}?${params_string}`
+        }
+    }
     try {
 		let response: any;
-        if (Boolean(data)) {
-            response = await api[method](link, data)
-        } else {
-            response = await api[method](link)
-        }
-        return { succeeded: true, response: response, data: response.data }
-    } catch (e) {
-        return {succeeded: false, error: findError(e)}
+        response = await api[method](link, data)
+        return validate({ succeeded: true, extraInfo: getExtraInfoFromResponse(response), response: response, data: response.data }, validateContext)
+    } catch (e: any) {
+        return validate({ succeeded: false, extraInfo: getExtraInfoFromResponse(e.response), error: findError(e) }, validateContext)
     }
 }
 
-function getFetchAPIFunction(api: any, fetchAPIProps: fetchAPIInterface = {}) {
-    return async (data?: dataType, link_data?: any) => {
-        return await fetchAPI(api, {data, link_data, ...fetchAPIProps})
+function getFetchAPIFunction(api: any, baseFetchAPIProps: fetchAPIInterface = {}) {
+    return async (data?: dataType, fetchProps: fetchAPIInterface={}) => {
+        return await fetchAPI(api, { data, ...baseFetchAPIProps, ...fetchProps })
     }
 }
 
-function createQuickAPIFunction(api: any, fetchAPIProps: fetchAPIInterface = {}) {
-	const quickAPIFunction = (args: fetchAPIInterface={}) => getFetchAPIFunction(api, { ...fetchAPIProps, ...args})
+function createQuickAPIFunction(api: any, baseFetchAPIProps: fetchAPIInterface = {}) {
+	const quickAPIFunction = (args: fetchAPIInterface={}) => getFetchAPIFunction(api, { ...baseFetchAPIProps, ...args})
 	return quickAPIFunction
 }
 
 function actionFromApi({ apiFunction, requiresFormData=true }: { requiresFormData: boolean, apiFunction: (formData?: any) => any }) {
-    return async function ({ request }) {
+    return async function ({ request, context }: { context: any, request: any }) {
         let response: any;
         if (requiresFormData) {
             const formData = await request.formData();
@@ -91,14 +108,27 @@ function actionFromApi({ apiFunction, requiresFormData=true }: { requiresFormDat
         return response
     }
 }
+function loaderFromApi({ apiFunction, throwError = false }: { throwError: boolean, apiFunction: (formData?: any) => any }) {
+    return async function (allProps: { params: any, context: any, request: any }) {
+        const urlFromRequest = allProps.request.url
+        const paramsFromUrl = new URL(urlFromRequest).searchParams
+        const paramsDict = Object.fromEntries(paramsFromUrl.entries())
+        const response = await apiFunction({ searchParams: paramsDict, ...allProps })
+        if (!response.succeeded && throwError) {
+            throw new Error(response?.errorMessage)
+        }
+        return response.data
+    }
+}
 
-export { fetchAPI, getFetchAPIFunction, createQuickAPIFunction, actionFromApi, findError,  }
+export { fetchAPI, getFetchAPIFunction, createQuickAPIFunction, findError, actionFromApi, loaderFromApi  }
 
 
 import { useEffect, useState } from "react"
-import { useFetcher, Fetcher } from "react-router-dom"
+import { useFetcher, } from "react-router-dom"
 
 import { capatilize } from "./utils";
+import { enqueueSnackbar } from "notistack";
 
 export type anyStateType = [any, React.Dispatch<React.SetStateAction<any>>]
 
@@ -156,18 +186,9 @@ function getFullError(error: NestedError, itemLocation: string) {
 }
 
 
-function miniStateFromState(state: any, key: string) {
-    const [stateValue, setState] = state
-    const valueOfMiniState = stateValue[key]
-    return [valueOfMiniState, (operation: any) => {
-        if (typeof operation === "function") {
-            operation = operation(valueOfMiniState)
-        }
-        setState((oldState: {[key: string]: any}) => ({...oldState, [key]: operation}))
-    }]
-}
 
-function baseReactRouterDataUseEffect({ data, onSuccess=(data: any) => {}, onError=(data: any) => {} }) {
+
+function baseReactRouterDataUseEffect({ data, onSuccess=(data: any) => {}, onError=(data: any) => {} }: { data: any, onSuccess: (data: any) => void, onError: (data: any) => void }) {
     useEffect(() => {
         if (data) {            
             if (data.succeeded) {
@@ -178,11 +199,20 @@ function baseReactRouterDataUseEffect({ data, onSuccess=(data: any) => {}, onErr
         }
     }, [data])
 }
-const baseUseDataAndErrorOnSuccess = ({ data, errorState, message = "Woohoo, successful" }) => {
+
+interface onSucessOrError {
+    data: any
+    errorState: anyStateType
+    message?: string
+}
+
+const baseUseDataAndErrorOnSuccess = ({ data, errorState, message = "Woohoo, successful" }: onSucessOrError) => {
+    enqueueSnackbar(message, {variant: "success"})
     const setError = errorState[1]
     setError({})
 }
-const baseUseDataAndErrorOnError = ({ data, errorState, message = data.errorMessage }) => {
+const baseUseDataAndErrorOnError = ({ data, errorState, message = data.error.alwaysErrorMessage }: onSucessOrError) => {
+    enqueueSnackbar(message, {variant: "error"})
     const setError = errorState[1]
     setError(data.error)
 }
@@ -205,14 +235,14 @@ function useFetcherAndError ({ fetcher=useFetcher(), overrideOriginalOnSuccess=f
 {
     const errorState: anyStateType = useState({})
     const fullOnSuccess = (data: any) => {
-        const originalFunctionProps = { data, errorState }
+        const originalFunctionProps: onSucessOrError = { data, errorState }
         const props = {...originalFunctionProps}
         if (onSuccessMessage) {originalFunctionProps["message"] = onSuccessMessage}
         !overrideOriginalOnSuccess && baseUseDataAndErrorOnSuccess(originalFunctionProps)
         onSuccess(props)
     }
     const fullOnError = (data: any) => {
-        const originalFunctionProps = { data, errorState }
+        const originalFunctionProps: onSucessOrError = { data, errorState }
         const props = {...originalFunctionProps}
         if (onErrorMessage) {originalFunctionProps["message"] = onErrorMessage}
         !overrideOriginalOnError && baseUseDataAndErrorOnError(originalFunctionProps)
@@ -237,91 +267,95 @@ function useFullFetcherAction({ useFetcherAndErrorProps={}, useGetFromNameProps=
 interface useGetFromNameInterface {
     errorState?: anyStateType
     fieldState?: anyStateType
-    disableFieldState?: boolean
     getFromNameOptions?: getFromNameOptionsInterface
 }
 
-function useGetFromName({ disableFieldState=false, errorState=useState({}), getFromNameOptions={disableFieldState}, fieldState=(disableFieldState ? undefined : useState({})) }: useGetFromNameInterface = {}) {
+function useGetFromName({ errorState=useState({}), getFromNameOptions={}, fieldState=(getFromNameOptions.useFieldState ? useState({}) : undefined) }: useGetFromNameInterface = {}) {
     const [error] = errorState
-    const quickGetFromName = (name: string, options: getFromNameOptionsInterface={}) => getFromName(name, error, { fieldState, ...getFromNameOptions, ...options} )
-    return { getFromName: quickGetFromName, errorState, fieldState}
+    const quickGetFromName = (basename: string, options: getFromNameOptionsInterface={}) => getFromName(basename, error, { fieldState, ...getFromNameOptions, ...options} )
+    return { getFromName: quickGetFromName, errorState, fieldState }
 }
 
 
 interface getFromNameOptionsInterface {
     fieldState?: any;
-    disableFieldState?: boolean;
+    useFieldState?: boolean;
     hidden?: boolean;
     onChange?: (...args: any) => any;
     errorKeyName?: string;
     errorKey?: string;
     errorExistsKey?: string;
-    emptyNameIf?: (fieldState?: any) => boolean;
+    name?: string;
+    fieldsKeyName?: string
     helperText?: string;
+    showHelperText?: boolean
     addLabel?: boolean
     labelName?: string
     overrideOriginalOnChange?: boolean
+    onChangeValidate?: (fieldValue:any, oldFieldValue: any) => any
+    defaultValue?: any
 }
 
-function getFromName(name: string, error: any, {
-    fieldState,
-    disableFieldState = false,
+function getFromName(basename: string, error: any, {
+    fieldState = undefined,
+    useFieldState = false,
     hidden = false,
     onChange = () => {},
-    errorKeyName = name,
+    errorKeyName = basename,
     errorKey = "helperText",
     errorExistsKey = "error",
-    emptyNameIf = () => false,
+    name=basename,
+    fieldsKeyName = basename,
     helperText,
+    showHelperText=true,
     overrideOriginalOnChange = false,
     addLabel=true,
-    labelName = capatilize(name.slice())
+    labelName = capatilize(basename),
+    onChangeValidate = (fieldValue) => fieldValue,
+    defaultValue = undefined,
 }: getFromNameOptionsInterface = {}) {
+    let finalReturn: {[key: string]: any} = { name: name,  };
 
-    let finalReturn = { name: emptyNameIf(fieldState) ? undefined : name,  };
-    if (!disableFieldState) { 
-        const [fields, setFields]: any = fieldState;
-        finalReturn["value"] = fields[name] || ""
-    }
+
+    const [fields, setFields]: any = (fieldState || [undefined, undefined]);
+    const fieldValue = fields?.[fieldsKeyName];
+    finalReturn["value"] = fieldValue
+    // if (defaultValue!==undefined) {
+    //     if (fieldValue===undefined) {
+    //         finalReturn["value"] = defaultValue
+    //     }
+    //     console.log("setField Default")
+    //     useEffect(() => {
+    //         if (fieldValue===undefined) {
+    //             setFields((oldField:any) => ({ ...oldField, [fieldsKeyName]: defaultValue }));
+    //         }
+    //     }, [])
+    // }
     if (hidden) { return finalReturn }
-    const { error: fullError, isError } = getFullError(error.fields, errorKeyName);
-    finalReturn = {...finalReturn, [errorKey]: fullError, [errorExistsKey]: isError }
-    if (helperText && !fullError && !isError) { finalReturn[errorKey] = helperText }
-    if (!disableFieldState) {
-        const [fields, setFields]: any = fieldState;
-        function baseOnChange(e: any) {
-            !overrideOriginalOnChange && setFields((oldField:any) => ({ ...oldField, [name]: e.target.value }));
-            onChange(e, fieldState)
-        }
-        finalReturn["onChange"] = baseOnChange
+    function defaultOnChange(e: any) {
+        setFields((oldField:any) => ({ ...oldField, [fieldsKeyName]: onChangeValidate(e.target.value, oldField?.[fieldsKeyName]) }))
     }
-    if (addLabel) {
-        finalReturn["label"] = labelName
+    function baseOnChange(e: any) {
+        !overrideOriginalOnChange && defaultOnChange(e)
+        onChange(e, fieldState)
     }
+    const { error: fieldError, isError } = getFullError(error.fields, errorKeyName);
+    finalReturn[errorExistsKey] = isError
+    if (showHelperText) {
+        finalReturn[errorKey] = fieldError
+        if (helperText && !isError) { finalReturn[errorKey] = helperText }
+    }
+    if (useFieldState) {finalReturn["onChange"] = baseOnChange}
+    if (addLabel) {finalReturn["label"] = labelName}
 
     return finalReturn
 }
 
 
-function searchQA(fullFAQListOfDicts: [ string, string ][], searchTerm: string) {
-    searchTerm = searchTerm.slice().toLowerCase()
-    return fullFAQListOfDicts.filter((qaList, index) => {
-        const question = qaList[0].slice().toLowerCase()
-        const anwser = qaList[1].slice().toLowerCase()
-        if (question.includes(searchTerm) || anwser.includes(searchTerm)) {
-            return true
-        }
-        return false
-    })
-
-}
 
 
 
-
-export { miniStateFromState,
-    useFetcherAndError,
+export { useFetcherAndError,
     getFromName, useGetFromName,
     useFullFetcherAction,
-    searchQA
 }
