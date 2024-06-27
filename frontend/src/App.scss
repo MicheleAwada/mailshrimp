@@ -11,3 +11,12 @@ html,body, #root {
 html {
     overflow-x: hidden;
 }
+
+header {
+    z-index: 999 !important;
+}
+
+:root {
+    background-color: #222222;
+    color: #fff;
+}
